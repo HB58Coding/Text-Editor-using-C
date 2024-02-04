@@ -30,7 +30,7 @@ PAGE_DOWN
 };
 
 /*** Data ***/
-typedef struct erow
+typedef struct erow //stores a line of text as a pointer, erow->editor row
 {
   int size;
   char *chars;
@@ -39,10 +39,10 @@ erow;
 
 struct editorConfig 
 {
-  int cx, cy;
+  int cx, cy; //cursor position
   int rowoff;
-  int screenrows;
-  int screencols;
+  int screenrows; //rows pixel count
+  int screencols; //columns pixel count
   int numrows;
   erow *row;
   struct termios orig_termios;
@@ -51,7 +51,7 @@ struct editorConfig
 struct editorConfig E;
 
 /*** Terminal ***/
-void die(const char *s) 
+void die(const char *s) //
 {
   write(STDOUT_FILENO, "\x1b[2J", 4);
   write(STDOUT_FILENO, "\x1b[H", 3);
@@ -60,13 +60,13 @@ void die(const char *s)
   exit(1);
 }
 
-void disableRawMode()
+void disableRawMode() //turns off raw mode after the program is executed
 {
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios) == -1)
   die("tcsetattr");
 }
 
-void enableRawMode()
+void enableRawMode() //turns off some  signals and turns on raw mode for terminal input
 {
   if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1) die("tcgetattr");
   atexit(disableRawMode);
@@ -82,7 +82,7 @@ void enableRawMode()
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
 }
 
-int editorReadKey()
+int editorReadKey() //reads lowlevel keyboard inputs from stdin
 {
 int nread;
 char c;
@@ -90,18 +90,18 @@ while((nread = read(STDIN_FILENO, &c, 1)) != 1)
   {
     if (nread == -1 && errno != EAGAIN) die("reaad");
     }
-    if (c='\x1b')
+    if (c == '\x1b')
     {
       char seq[3];
 
-      if (read(STDIN_FILENO, &seq[0], 1) != 1) return 'x1b';
-      if (read(STDIN_FILENO, &seq[1], 1) != 1) return 'x1b';
+      if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
+      if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
 
       if (seq[0] == '[')
       {
         if (seq[1] >= '0' && seq[1] <= '9')
         {
-          if (read(STDIN_FILENO, &seq[2], 1) != 1) return 'x1b';
+          if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b';
           if (seq[2] == '~')
           {
             switch (seq[1])
@@ -199,7 +199,7 @@ void editorAppendRow(char *s, size_t len)
 }
 
 /*** file i/o ***/
-void editorOpen(char *filename)
+void editorOpen(char *filename) //takes a filename and opens the file for reading using fopen()
 {
   FILE *fp = fopen(filename, "r");
   if(!fp) die("fopen");
@@ -216,31 +216,32 @@ void editorOpen(char *filename)
   fclose(fp);
 }
 
-/*** Append Buffer ***/
-struct abuf{
+/*** Append Buffer ***/ //pointer to the buffer in memory and length of the string
+struct abuf
+{
   char *b;
   int len;
 };
 
-#define ABUF_INIT {NULL, 0}
+#define ABUF_INIT {NULL, 0} //represents empty buffer
 
 void abAppend(struct abuf *ab, const char *s, int len)
 {
-  char *new = realloc(ab->b, ab->len + len);
+  char *new = realloc(ab->b, ab->len + len); //give us a block of memory that is the size of the current string plus the size of the string we are appending. 
 
   if (new == NULL) return;
-  memcpy (&new[ab->len], s, len);
+  memcpy (&new[ab->len], s, len); //copy the string s after the end of the current data in the buffer
   ab->b = new;
   ab->len += len;
 }
 
-void abFree(struct abuf *ab)
+void abFree(struct abuf *ab) //deallocates the dynamic memory allocated by abuf
 {
   free(ab->b);
 }
 
 /*** Output ***/
-void editorScroll()
+void editorScroll() //
 {
   if (E.cy < E.rowoff)
   {
@@ -252,7 +253,7 @@ void editorScroll()
   }
 }
 
-void editorDrawRows(struct abuf *ab)
+void editorDrawRows(struct abuf *ab) //handles drawing each row of the buffer of text being edited
 {
   int y;
   for (y=0; y < E.screenrows; y++);
@@ -297,16 +298,16 @@ void editorDrawRows(struct abuf *ab)
   }
 }
 
-void editorRefreshScreen()
+void editorRefreshScreen() //instruct the terminal to do various text formatting tasks, such as coloring text, moving the cursor around, and clearing parts of the screen.
 {
   editorScroll();
 
-  struct abuf ab = ABUF_INIT;
+  struct abuf ab = ABUF_INIT; //initialising new buffer ab to ABUF_INIT
 
   abAppend(&ab, "\x1b[?25l", 6);
-  abAppend(&ab, "\x1b[H", 3);
+  abAppend(&ab, "\x1b[H", 3); //takes the row and column position at which to position the cursor
 
-  editorDrawRows(&ab);
+  editorDrawRows(&ab); //passing ab so it makes use of abAppend
 
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
@@ -314,8 +315,8 @@ void editorRefreshScreen()
   
   abAppend(&ab, "\x1b[?25h", 6);
 
-  write(STDOUT_FILENO, ab.b, ab.len);
-  abFree(&ab);
+  write(STDOUT_FILENO, ab.b, ab.len); //writing the buffer's content to standard output
+  abFree(&ab); //frees the memory allocated
 }
 
 /*** Input ***/
@@ -353,7 +354,7 @@ void editorMoveCursor(int key)
   }
 }
 
-void editorProcessKeypress()
+void editorProcessKeypress() //mapping keypresses to editor operation
 {
   int c = editorReadKey();
 
@@ -394,7 +395,7 @@ void editorProcessKeypress()
 
 /*** Init ***/
 
-void initEditor()
+void initEditor() //initialise all fields in the E struct
 {
   E.cx = 0;
   E.cy = 0;
